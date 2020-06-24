@@ -8,6 +8,7 @@ import android.media.MediaCodecInfo;
 import android.media.MediaCodecList;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
+import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Process;
@@ -21,6 +22,7 @@ import com.wzq.audioavideo.R;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
 import java.util.GregorianCalendar;
 import java.util.Locale;
@@ -134,6 +136,13 @@ public class AudioActivity extends AppCompatActivity {
 
     }
 
+    private static final int[] AUDIO_SOURCES = new int[]{
+            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.DEFAULT,
+            MediaRecorder.AudioSource.CAMCORDER,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+    };
 
     private class AudioThread extends Thread {
         @Override
@@ -147,8 +156,49 @@ public class AudioActivity extends AppCompatActivity {
             if (buffer_size < min_buffer_size) {
                 buffer_size = ((min_buffer_size / SAMPLES_PER_FRAME) + 1) * SAMPLES_PER_FRAME * 2;
             }
+            AudioRecord audioRecord = null;
+            for (int audioSource : AUDIO_SOURCES) {
+                try {
+                    audioRecord = new AudioRecord(
+                            audioSource, SAMPLE_RATE,
+                            AudioFormat.CHANNEL_IN_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT,
+                            buffer_size);
+                    if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                        audioRecord = null;
+                    }
+                } catch (Exception e) {
+                    audioRecord = null;
+                }
+                if (audioRecord != null) break;
+            }
+
+            if (audioRecord != null) {
+                try {
+                    if (mIsCapturing) {
+                        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(SAMPLES_PER_FRAME);
+                        int readBytes;
+                        audioRecord.startRecording();
+                        try {
+
+                            for (;mIsCapturing&&!mRequestStop&&)
 
 
+
+
+
+                        } finally {
+                            audioRecord.stop();
+                        }
+
+                    }
+                } finally {
+
+                    audioRecord.release();
+                }
+
+
+            }
 
 
         }
