@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 
+import com.wzq.audioavideo.audio.AudioActivity;
+
 public class MainActivity extends AppCompatActivity {
 
     @Override
