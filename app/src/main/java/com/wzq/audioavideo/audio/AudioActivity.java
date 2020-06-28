@@ -16,6 +16,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.wzq.audioavideo.R;
@@ -25,6 +26,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
 import java.util.GregorianCalendar;
+import java.util.IllegalFormatCodePointException;
 import java.util.Locale;
 
 import butterknife.BindView;
@@ -37,7 +39,7 @@ public class AudioActivity extends AppCompatActivity {
 
     private static String TAG = "AudioActivity";
     private static boolean DEBUG = true;
-
+    protected static final int TIMEOUT_USEC = 10000;    // 10[msec]
 
     private static final SimpleDateFormat mDateTimeFormat = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss", Locale.US);
     private static final String DIR_NAME = "AVRecSample";
@@ -94,6 +96,21 @@ public class AudioActivity extends AppCompatActivity {
     protected volatile boolean mIsCapturing;
 
 
+    /***
+     * 编码器收到数据为空
+     */
+    private boolean mIsEOS;
+
+
+    /**
+     * 编码出队实例
+     */
+    private MediaCodec.BufferInfo mBufferInfo;
+
+
+    private boolean mMuxerStarted;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -133,6 +150,15 @@ public class AudioActivity extends AppCompatActivity {
      * 结束录制
      */
     private void stopRecording() {
+
+        synchronized (mSync) {
+            if (!mIsCapturing || mRequestStop) {
+                return;
+            }
+            mRequestStop = true;
+            mSync.notifyAll();
+        }
+
 
     }
 
@@ -180,28 +206,72 @@ public class AudioActivity extends AppCompatActivity {
                         int readBytes;
                         audioRecord.startRecording();
                         try {
-
-                            for (;mIsCapturing&&!mRequestStop&&)
-
-
-
-
-
+                            for (; mIsCapturing && !mRequestStop && !mIsEOS; ) {
+                                byteBuffer.clear();
+                                readBytes = audioRecord.read(byteBuffer, SAMPLES_PER_FRAME);
+                                if (readBytes > 0) {
+                                    byteBuffer.position(readBytes);
+                                    byteBuffer.flip();
+                                    encode(byteBuffer, readBytes, getPTSUs());
+                                    frameAvailableSoon();
+                                    cut++;
+                                }
+                            }
+                            frameAvailableSoon();
                         } finally {
                             audioRecord.stop();
                         }
 
                     }
                 } finally {
-
                     audioRecord.release();
                 }
-
-
+            } else {
+                Log.e(TAG, "failed to initialize AudioRecord");
             }
 
 
+            /**
+             * 没有采集数据
+             */
+            if (cut == 0) {
+                final ByteBuffer buf = ByteBuffer.allocate(SAMPLES_PER_FRAME);
+                for (int i = 0; mIsCapturing && (i < 5); i++) {
+                    buf.position(SAMPLES_PER_FRAME);
+                    buf.flip();
+                    try {
+                        encode(buf, SAMPLES_PER_FRAME, getPTSUs());
+                        frameAvailableSoon();
+                    } catch (Exception e) {
+                        break;
+                    }
+
+                    synchronized (this) {
+                        try {
+                            wait(50);
+                        } catch (Exception e) {
+                        }
+                    }
+                }
+            }
         }
+    }
+
+
+    /**
+     * 表示编码的数据即将或者已经可以使用
+     *
+     * @return
+     */
+    private boolean frameAvailableSoon() {
+        synchronized (mSync) {
+            if (!mIsCapturing || mRequestStop) {
+                return false;
+            }
+            mRequestDrain++;
+            mSync.notifyAll();
+        }
+        return true;
     }
 
 
@@ -215,7 +285,7 @@ public class AudioActivity extends AppCompatActivity {
         } catch (final NullPointerException | IOException e) {
             throw new RuntimeException("This app has no permission of writing external storage");
         }
-
+        mBufferInfo = new MediaCodec.BufferInfo();
         new MediaMuxerThread().start();
         synchronized (mSync) {
             try {
@@ -232,6 +302,8 @@ public class AudioActivity extends AppCompatActivity {
      * 创建编码器
      */
     private void createMediaCodec() {
+        mTrackIndex = -1;
+        mMuxerStarted = mIsEOS = false;
         MediaCodecInfo mediaCodecInfo = selectAudioCodec(MIME_TYPE);
         if (mediaCodecInfo == null) {
             Log.e(TAG, "没有编码器");
@@ -248,6 +320,37 @@ public class AudioActivity extends AppCompatActivity {
             mMediaCodec.start();
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+
+    /***
+     * 数据编码
+     * @param byteBuffer
+     * @param length
+     * @param presentationTimeUs
+     */
+    private void encode(ByteBuffer byteBuffer, int length, long presentationTimeUs) {
+        if (!mIsCapturing) return;
+        final ByteBuffer[] inputBuffers = mMediaCodec.getInputBuffers();
+        while (mIsCapturing) {
+            final int inputBufferIndex = mMediaCodec.dequeueInputBuffer(TIMEOUT_USEC);
+            if (inputBufferIndex >= 0) {
+                final ByteBuffer inputBuffer = inputBuffers[inputBufferIndex];
+                inputBuffer.clear();
+                if (byteBuffer != null) {
+                    inputBuffer.put(byteBuffer);
+                }
+                if (length <= 0) {
+                    mIsEOS = true;
+                    mMediaCodec.queueInputBuffer(inputBufferIndex, 0, 0,
+                            presentationTimeUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                } else {
+                    mMediaCodec.queueInputBuffer(inputBufferIndex, 0, length,
+                            presentationTimeUs, 0);
+                }
+                break;
+            }
         }
     }
 
@@ -306,8 +409,10 @@ public class AudioActivity extends AppCompatActivity {
                  * 结束采集
                  */
                 if (localRequestStop) {
-
-
+                    writeMuxer();
+                    signalEndOfInputStream();
+                    writeMuxer();
+                    release();
                     break;
                 }
 
@@ -335,15 +440,114 @@ public class AudioActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * 请求结束录制
+     */
+    private void signalEndOfInputStream() {
+        encode(null, 0, getPTSUs());
+    }
 
     /**
      * 数据输出到多路复用
      */
     private void writeMuxer() {
-
-
+        if (mMediaCodec == null) return;
+        ByteBuffer[] encoderOutputBuffers = mMediaCodec.getOutputBuffers();
+        int encoderStatus, count = 0;
+        if (mMediaMuxer == null) {
+            Log.w(TAG, "muxer is unexpectedly null");
+            return;
+        }
+        LOOP:
+        while (mIsCapturing) {
+            encoderStatus = mMediaCodec.dequeueOutputBuffer(mBufferInfo, TIMEOUT_USEC);
+            if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                if (!mIsEOS) {
+                    if (++count > 5) {
+                        break LOOP;
+                    }
+                }
+            } else if (encoderStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
+                encoderOutputBuffers = mMediaCodec.getOutputBuffers();
+            } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                if (mMuxerStarted) {
+                    throw new RuntimeException("format changed twice");
+                }
+                final MediaFormat format = mMediaCodec.getOutputFormat();
+                mTrackIndex = mMediaMuxer.addTrack(format);
+                mMediaMuxer.start();
+                mMuxerStarted = true;
+            } else if (encoderStatus < 0) {
+                Log.w(TAG, "drain:unexpected result from encoder#dequeueOutputBuffer: " + encoderStatus);
+            } else {
+                final ByteBuffer encodedData = encoderOutputBuffers[encoderStatus];
+                if (encodedData == null) {
+                    throw new RuntimeException("encoderOutputBuffer " + encoderStatus + " was null");
+                }
+                if ((mBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                    mBufferInfo.size = 0;
+                }
+                if (mBufferInfo.size != 0) {
+                    count = 0;
+                    if (!mMuxerStarted) {
+                        throw new RuntimeException("drain:muxer hasn't started");
+                    }
+                    mBufferInfo.presentationTimeUs = getPTSUs();
+                    mMediaMuxer.writeSampleData(mTrackIndex, encodedData, mBufferInfo);
+                    prevOutputPTSUs = mBufferInfo.presentationTimeUs;
+                }
+                mMediaCodec.releaseOutputBuffer(encoderStatus, false);
+                if ((mBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    mIsCapturing = false;
+                    break;
+                }
+            }
+        }
     }
 
+
+    /**
+     * 释放
+     */
+    private void release() {
+        mIsCapturing = false;
+        if (mMediaCodec != null) {
+            try {
+                mMediaCodec.stop();
+                mMediaCodec.release();
+                mMediaCodec = null;
+            } catch (Exception e) {
+                Log.e(TAG, "failed releasing MediaCodec", e);
+            }
+
+            if (mMuxerStarted) {
+                if (mMediaMuxer != null) {
+                    mMediaMuxer.stop();
+                }
+            }
+        }
+        mBufferInfo = null;
+    }
+
+
+    /**
+     * previous presentationTimeUs for writing
+     */
+    private long prevOutputPTSUs = 0;
+
+    /**
+     * get next encoding presentationTimeUs
+     *
+     * @return
+     */
+    protected long getPTSUs() {
+        long result = System.nanoTime() / 1000L;
+        // presentationTimeUs should be monotonic
+        // otherwise muxer fail to write
+        if (result < prevOutputPTSUs)
+            result = (prevOutputPTSUs - result) + result;
+        return result;
+    }
 
     /**
      * generate output file
