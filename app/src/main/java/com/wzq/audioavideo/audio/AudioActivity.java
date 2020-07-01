@@ -50,12 +50,7 @@ public class AudioActivity extends AppCompatActivity {
     @BindView(R.id.button_stop)
     Button buttonStop;
 
-    // 修改头像需要的权限
-    private String[] mPerms = {
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.RECORD_AUDIO};
-    private static final int PERMISSIONS = 101; //请求码
+
 
 
     /**
@@ -117,7 +112,6 @@ public class AudioActivity extends AppCompatActivity {
         setContentView(R.layout.activity_audio);
         ButterKnife.bind(this);
 
-        requestPermission();
 
     }
 
@@ -577,14 +571,6 @@ public class AudioActivity extends AppCompatActivity {
     }
 
 
-    @AfterPermissionGranted(PERMISSIONS)
-    private void requestPermission() {
-        if (EasyPermissions.hasPermissions(this, mPerms)) {
-            // 已经存在权限
-        } else {
-            EasyPermissions.requestPermissions(this, "获取权限", PERMISSIONS, mPerms);
-        }
-    }
 
 
 }
