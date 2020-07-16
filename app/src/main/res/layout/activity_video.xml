@@ -6,4 +6,9 @@
     android:layout_height="match_parent"
     tools:context=".video.VideoActivity">
 
+
+    <com.wzq.audioavideo.video.CameraGlSurfaceView
+        android:id="@+id/camera_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

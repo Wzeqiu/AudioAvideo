@@ -1,6 +1,7 @@
 package com.wzq.audioavideo;
 
 import androidx.appcompat.app.AppCompatActivity;
+
 import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
 
@@ -17,8 +18,10 @@ public class MainActivity extends AppCompatActivity {
     private String[] mPerms = {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.RECORD_AUDIO};
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA};
     private static final int PERMISSIONS = 101; //请求码
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -40,7 +43,6 @@ public class MainActivity extends AppCompatActivity {
         requestPermission();
 
     }
-
 
 
     @AfterPermissionGranted(PERMISSIONS)
