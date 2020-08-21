@@ -20,6 +20,7 @@
         android:theme="@style/AppTheme">
         <activity
             android:name=".video.VideoActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
             android:screenOrientation="portrait" />
         <activity
             android:name=".audio.AudioActivity"
