@@ -1,6 +1,5 @@
 package com.wzq.audioavideo.audio;
 
-import android.Manifest;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaCodec;
@@ -11,6 +10,8 @@ import android.media.MediaMuxer;
 import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
 import android.os.Process;
 import android.util.Log;
 import android.view.View;
@@ -26,14 +27,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
 import java.util.GregorianCalendar;
-import java.util.IllegalFormatCodePointException;
 import java.util.Locale;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
-import pub.devrel.easypermissions.AfterPermissionGranted;
-import pub.devrel.easypermissions.EasyPermissions;
 
 public class AudioActivity extends AppCompatActivity {
 
@@ -112,6 +110,14 @@ public class AudioActivity extends AppCompatActivity {
         setContentView(R.layout.activity_audio);
         ButterKnife.bind(this);
 
+
+        Handler handler= new Handler(){
+            @Override
+            public void handleMessage(@NonNull Message msg) {
+                super.handleMessage(msg);
+            }
+        };
+        handler.sendEmptyMessage(0)
 
     }
 
